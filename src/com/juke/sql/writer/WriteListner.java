@@ -1,16 +1,14 @@
 package com.juke.sql.writer;
 
-import java.util.Observer;
-
 /*******************************************************************************
- * TODO: add class / interface description
  *
  * @author Serhii Krivtsov
  ******************************************************************************/
 public interface WriteListner
 {
-    public void onCreateTableWrite(String sqlQery);
-    public void onInsertStatementWrite(String sqlQery);
-    public void onUpdateStatementWrite(String sqlQery);
-    public void onDropTableWrite(String sqlQery);
+	public static int INSERT =  0;
+	public static int UPDATE =  1;
+	public static int DROP =  2;
+	public static int OTHER =  10;
+	public void onWrite(String sqlQery,int sqlType);
 }

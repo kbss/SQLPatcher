@@ -6,9 +6,9 @@ import java.util.List;
 
 import com.juke.sql.formater.SQLFormater;
 import com.juke.sql.formater.sqlite.SQLiteFormater;
+import com.juke.sql.writer.SimpleWriteListner;
 
 /*******************************************************************************
- * TODO: add class / interface description
  * 
  * @author Serhii Krivtsov
  ******************************************************************************/
@@ -35,6 +35,7 @@ public class Diff
         this.actual = actual;
         this.expected = expected;
         sqlFormater = new SQLiteFormater();
+        sqlFormater.registreWriter(new SimpleWriteListner());
     }
 
     private List<String> getNewTables()
@@ -75,6 +76,7 @@ public class Diff
     {
         if (dropedTables == null)
         {
+        	dropedTables = new ArrayList<String>();
             for (String table : getOldTableList())
             {
                 if (!getNewTableList().contains(table))
@@ -102,8 +104,8 @@ public class Diff
     {
         for (String tableName : getNewTables())
         {
-            System.out.println(sqlFormater.createFullSQLTableDump(expected,
-                    tableName));
+            sqlFormater.createFullSQLTableDump(expected,
+                    tableName);
         }
         for (String tableName : getDropedTables())
         {

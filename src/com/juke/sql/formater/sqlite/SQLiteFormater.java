@@ -8,24 +8,22 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import com.juke.sql.formater.SQLColumn;
 import com.juke.sql.formater.SQLFormater;
 import com.juke.sql.util.Utils;
+import com.juke.sql.writer.WriteListner;
 
 /*******************************************************************************
- * TODO: add class / interface description
  * 
  * @author Serhii Krivtsov
  ******************************************************************************/
 public class SQLiteFormater implements SQLFormater
 {
-    // private static final String CREATE_TABLE_SQL = "CREATE TABLE %s (%s);";
-
     private static final String SQL_SEPARATOR = ";";
 
     private static final String SQL_COLUMN_SEPARATOR = ", ";
 
     private static final String SELECT_ALL = "SELECT * FROM %s";
+    private WriteListner writeListner;
 
     private String joinColumns(List<SQLiteColumn> columnList)
     {
@@ -43,17 +41,27 @@ public class SQLiteFormater implements SQLFormater
 
     private void addInsertStatement(String sqlQuery)
     {
-        System.err.println(sqlQuery);
+    	if(writeListner != null) {
+    		writeListner.onWrite(sqlQuery, WriteListner.INSERT);
+    	}
     }
 
     private void addDropTableStatement(String sqlQuery)
     {
-        System.err.println(sqlQuery);
+    	if(writeListner != null) {
+    		writeListner.onWrite(sqlQuery, WriteListner.DROP);
+    	}
     }
-
-    @Override
-    public String createFullSQLTableDump(Connection connection, String tableName)
+    private void addCreateTableStatement(String sqlQuery)
     {
+    	if(writeListner != null) {
+    		writeListner.onWrite(sqlQuery, WriteListner.OTHER);
+    	}
+    }
+    @Override
+    public void createFullSQLTableDump(Connection connection, String tableName)
+    {
+    	getNewTableSQLQuery(connection, tableName);
         List<SQLiteColumn> columnList = getColumnList(connection, tableName);
         ResultSet resultSet = null;
         Statement statement = null;
@@ -87,7 +95,6 @@ public class SQLiteFormater implements SQLFormater
             Utils.close(resultSet, statement);
         }
 
-        return getNewTableSQLQuery(connection, tableName);
     }
 
     private void getOldTablesDiff(Connection newDatabase, Connection oldDatabase)
@@ -239,6 +246,7 @@ public class SQLiteFormater implements SQLFormater
             while (resultSet.next())
             {
                 result = resultSet.getString(1) + SQL_SEPARATOR;
+                addCreateTableStatement(result);
             }
         }
         catch (SQLException e)
@@ -289,4 +297,11 @@ public class SQLiteFormater implements SQLFormater
                 SQLFormater.DROP_TABLE_SQL_TEMPLATE, tableName));
         return String.format(SQLFormater.DROP_TABLE_SQL_TEMPLATE, tableName);
     }
+
+
+
+	@Override
+	public void registreWriter(WriteListner listner) {
+		writeListner = listner;
+	}
 }

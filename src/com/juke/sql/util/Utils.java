@@ -92,13 +92,13 @@ public class Utils
         return join(collection, ", ");
     }
 
-    public static void writeStringToFile(File file, String text)
+    public static void writeStringToFile(File file, String text, boolean append)
     {
         PrintWriter out = null;
         FileWriter outFile = null;
         try
         {
-            outFile = new FileWriter(file);
+            outFile = new FileWriter(file,append);
             out = new PrintWriter(outFile);
             out.write(text);
             outFile.close();
@@ -113,7 +113,9 @@ public class Utils
             close(out, outFile);
         }
     }
-
+    public static void writeStringToFile(File file, String text){
+    	writeStringToFile(file,text,false);
+    }
     public static void writeStringToFile(String file, String text)
     {
         writeStringToFile(new File(file), text);

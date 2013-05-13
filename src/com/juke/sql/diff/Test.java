@@ -6,7 +6,6 @@ import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 /*******************************************************************************
- * TODO: add class / interface description
  * 
  * @author Serhii Krivtsov
  ******************************************************************************/
