@@ -1,6 +1,7 @@
 package com.juke.sql.diff;
 
 import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,7 +19,7 @@ public class Diff
 
     private Connection expected;
 
-    private SQLFormater sqlFormater;
+    private SQLiteFormater sqlFormater;
 
     private List<String> oldTables;
 
@@ -112,5 +113,14 @@ public class Diff
             System.out.println(sqlFormater.createDropTableSQLQery(tableName));
         }
 
+        try {
+			sqlFormater.generateTableDiff(actual, expected,"test" );
+		} catch (SQLException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
     }
+    
+    
+    
 }
