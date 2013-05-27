@@ -5,7 +5,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
 import com.juke.sql.formater.SQLFormater;
@@ -74,7 +73,7 @@ public class SQLiteFormater implements SQLFormater {
 				}
 				result = result.substring(0, result.length()
 						- SQL_COLUMN_SEPARATOR.length());
-				addInsertStatement(String.format(SQLFormater.INSERT_QERY,
+				addInsertStatement(String.format(SQLFormater.INSERT_QUERY,
 						tableName, joinedColumns, result));
 			}
 		} catch (SQLException e) {
@@ -82,17 +81,16 @@ public class SQLiteFormater implements SQLFormater {
 		} finally {
 			Utils.close(resultSet, statement);
 		}
-
 	}
 
-	private boolean isTableStructureEquals(Connection newDatabase,
-			Connection oldDatabase, String tableName) {
-		List<SQLiteColumn> oldColumList = getColumnList(oldDatabase, tableName);
-		List<SQLiteColumn> newColumList = getColumnList(oldDatabase, tableName);
-		Collections.sort(oldColumList);
-		Collections.sort(newColumList);
-		return oldColumList.equals(newColumList);
-	}
+	// private boolean isTableStructureEquals(Connection newDatabase,
+	// Connection oldDatabase, String tableName) {
+	// List<SQLiteColumn> oldColumList = getColumnList(oldDatabase, tableName);
+	// List<SQLiteColumn> newColumList = getColumnList(oldDatabase, tableName);
+	// Collections.sort(oldColumList);
+	// Collections.sort(newColumList);
+	// return oldColumList.equals(newColumList);
+	// }
 
 	private List<SQLiteColumn> getColumnList(Connection connection,
 			String tableName) {
@@ -247,27 +245,79 @@ public class SQLiteFormater implements SQLFormater {
 				tableName);
 		Statement etalonStatement = etalonConnection.createStatement();
 		Statement revisedStatement = revisedConnection.createStatement();
+
 		SQLTable etlonDiffTable = getTableDiff(tableName, columnList,
 				etalonStatement, revisedStatement);
+
 		SQLTable revisedDiffTable = getTableDiff(tableName, columnList,
 				revisedStatement, etalonStatement);
-		createUpdateAndDeleteStatement(etlonDiffTable, revisedDiffTable);
+
+		createTableQueryDiff(etlonDiffTable, revisedDiffTable);
 	}
 
-	private void createUpdateAndDeleteStatement(SQLTable etlonDiffTable,
+	private void createTableQueryDiff(SQLTable etlonDiffTable,
 			SQLTable revisedDiffTable) {
 		String joinedColumns = joinColumns(etlonDiffTable.getColumnList());
-		for (SQLRow row : revisedDiffTable.getRowList()) {
-			if (row.isRowDeleted()) {
-				String dataSQL = "";
-				for (RowData data : row.getDataList()) {
-					dataSQL += data.getRowDataStirngValue() + ",";
+		// ------------------------ INSERT DIFF-----------------------------
+		if (revisedDiffTable.getRowList() != null) {
+			for (SQLRow row : revisedDiffTable.getRowList()) {
+				if (row.isRowDeleted()) {
+					String dataSQL = "";
+					for (RowData data : row.getDataList()) {
+						dataSQL += data.getRowDataStirngValue() + ",";
+					}
+					dataSQL = dataSQL.substring(0, dataSQL.length() - 1);
+					addInsertStatement(String.format(SQLFormater.INSERT_QUERY,
+							etlonDiffTable.getTableName(), joinedColumns,
+							dataSQL));
 				}
-				dataSQL = dataSQL.substring(0, dataSQL.length() - 1);
-				addInsertStatement(String.format(SQLFormater.INSERT_QERY,
-						etlonDiffTable.getTableName(), joinedColumns, dataSQL));
 			}
 		}
+		// ------------------------ Delete DIFF-----------------------------
+
+		List<SQLiteColumn> keyColumn = getKeyColumns(etlonDiffTable
+				.getColumnList());
+
+		if (keyColumn.isEmpty()) {
+			keyColumn = etlonDiffTable.getColumnList();
+		}
+
+		if (etlonDiffTable.getRowList() != null) {
+			for (SQLRow row : etlonDiffTable.getRowList()) {
+				if (row.isRowDeleted()) {
+					addInsertStatement(String.format(SQLFormater.DELETE_QUERY,
+							etlonDiffTable.getTableName(),
+							formateDataByColum(keyColumn, row.getDataList())));
+				}
+			}
+		}
+		// ------------------------ Delete DIFF-----------------------------
+	}
+
+	private String formateDataByColum(List<SQLiteColumn> columnList,
+			List<RowData> dataList) {
+		StringBuilder stringBuilder = new StringBuilder();
+		for (RowData data : dataList) {
+			for (SQLiteColumn column : columnList) {
+				if (column.getColumnName().equalsIgnoreCase(
+						data.getColumn().getColumnName())) {
+					stringBuilder.append(column.getColumnName()).append("=")
+							.append(data.getRowDataStirngValue());
+					break;
+				}
+			}
+		}
+		return stringBuilder.toString();
+	}
+
+	private List<SQLiteColumn> getKeyColumns(List<SQLiteColumn> columnList) {
+		List<SQLiteColumn> keyColumnList = new ArrayList<SQLiteColumn>();
+		for (SQLiteColumn column : columnList) {
+			if (column.isPrimaryKey() || column.isUnique()) {
+				keyColumnList.add(column);
+			}
+		}
+		return keyColumnList;
 	}
 
 	private SQLTable getTableDiff(String tableName,
@@ -324,28 +374,27 @@ public class SQLiteFormater implements SQLFormater {
 				}
 			}
 		}
-		printSQL(table);
 		return table;
 	}
 
-	private void printSQL(SQLTable table) {
-		table.getRowList();
-		printlnColumnList(table.getColumnList());
-		for (SQLRow row : table.getRowList()) {
-			List<RowData> dataList = row.getDataList();
-			for (RowData data : dataList) {
-				System.out.print(data.getRowDataStirngValue() + " - "
-						+ (data.isChanged()) + "\t");
-			}
-			System.out.println();
-		}
+	// private void printSQL(SQLTable table) {
+	// table.getRowList();
+	// printlnColumnList(table.getColumnList());
+	// for (SQLRow row : table.getRowList()) {
+	// List<RowData> dataList = row.getDataList();
+	// for (RowData data : dataList) {
+	// System.out.print(data.getRowDataStirngValue() + " - "
+	// + (data.isChanged()) + "\t");
+	// }
+	// System.out.println();
+	// }
+	//
+	// }
 
-	}
-
-	private void printlnColumnList(List<SQLiteColumn> list) {
-		for (SQLiteColumn column : list) {
-			System.out.print(column.getColumnName() + "\t");
-		}
-		System.out.println("========================================");
-	}
+	// private void printlnColumnList(List<SQLiteColumn> list) {
+	// for (SQLiteColumn column : list) {
+	// System.out.print(column.getColumnName() + "\t");
+	// }
+	// System.out.println("========================================");
+	// }
 }
