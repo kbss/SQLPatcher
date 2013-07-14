@@ -11,15 +11,15 @@ import com.juke.sql.writer.WriteListner;
  * @author Serhii Krivtsov
  ******************************************************************************/
 public interface SQLFormater {
-	public String DROP_TABLE_SQL_TEMPLATE = "DROP TABLE IF EXISTS %s;";
-	public String INSERT_QUERY = "INSERT INTO %s (%s) VALUES (%s)";
-	public String DELETE_QUERY = "DELETE FROM %s WHERE %s;";
+    public String DROP_TABLE_SQL_TEMPLATE = "DROP TABLE IF EXISTS %s;";
+    public String INSERT_QUERY = "INSERT INTO %s (%s) VALUES (%s)";
+    public String DELETE_QUERY = "DELETE FROM %s WHERE %s;";
 
-	public void createFullSQLTableDump(Connection connection, String tableName);
+    public void createFullSQLTableDump(Connection connection, String tableName);
 
-	public List<String> getTableList(Connection connection);
+    public List<String> getTableList(Connection connection);
 
-	public String createDropTableSQLQery(String tableName);
+    public String createDropTableSQLQery(String tableName);
 
-	public void registreWriter(WriteListner listner);
+    public void registreWriter(WriteListner listner);
 }

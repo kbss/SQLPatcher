@@ -2,6 +2,7 @@ package com.juke.sql.formater.sqlite;
 
 import java.util.ArrayList;
 import java.util.List;
+
 /*******************************************************************************
  * SQL Row POJO class.
  * 
@@ -9,40 +10,60 @@ import java.util.List;
  ******************************************************************************/
 public class SQLRow {
 
-	private List<SQLiteColumn> columnList;
+    private List<SQLiteColumn> columnList;
 
-	private List<RowData> dataList;
+    private List<RowData> dataList;
 
-	private boolean isRowDeleted;
+    private boolean isRowDeleted;
 
-	public boolean isRowDeleted() {
-		return isRowDeleted;
-	}
+    private boolean isRowAdded;
 
-	public void setRowDeleted(boolean isRowDeleted) {
-		this.isRowDeleted = isRowDeleted;
-	}
+    int rowNum = -1;
 
-	public List<SQLiteColumn> getColumnList() {
-		return columnList;
-	}
+    public List<SQLiteColumn> getColumnList() {
+        return columnList;
+    }
 
-	public void setColumnList(List<SQLiteColumn> columnList) {
-		this.columnList = columnList;
-	}
+    public List<RowData> getDataList() {
+        return dataList;
+    }
 
-	public List<RowData> getDataList() {
-		return dataList;
-	}
+    public int getRowNum() {
+        return rowNum;
+    }
 
-	public void setDataList(List<RowData> dataList) {
-		this.dataList = dataList;
-	}
+    public boolean isRowAdded() {
+        return isRowAdded;
+    }
 
-	public void setData(RowData data) {
-		if (dataList == null) {
-			dataList = new ArrayList<RowData>();
-		}
-		dataList.add(data);
-	}
+    public boolean isRowDeleted() {
+        return isRowDeleted;
+    }
+
+    public void setColumnList(List<SQLiteColumn> columnList) {
+        this.columnList = columnList;
+    }
+
+    public void setData(RowData data) {
+        if (dataList == null) {
+            dataList = new ArrayList<RowData>();
+        }
+        dataList.add(data);
+    }
+
+    public void setDataList(List<RowData> dataList) {
+        this.dataList = dataList;
+    }
+
+    public void setRowAdded(boolean isRowAdded) {
+        this.isRowAdded = isRowAdded;
+    }
+
+    public void setRowDeleted(boolean isRowDeleted) {
+        this.isRowDeleted = isRowDeleted;
+    }
+
+    public void setRowNum(int rowNum) {
+        this.rowNum = rowNum;
+    }
 }

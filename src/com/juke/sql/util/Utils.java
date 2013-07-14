@@ -19,64 +19,43 @@ import java.util.Collection;
  * 
  * @author Serhii Krivtsov
  ******************************************************************************/
-public class Utils
-{
+public class Utils {
 
-    public static void close(Object... dbResources)
-    {
-        for (Object resource : dbResources)
-        {
-            if (resource != null)
-            {
-                try
-                {
-                    if (resource instanceof Connection)
-                    {
+    public static void close(Object... dbResources) {
+        for (Object resource : dbResources) {
+            if (resource != null) {
+                try {
+                    if (resource instanceof Connection) {
                         ((Connection) resource).close();
-                    }
-                    else if (resource instanceof Statement)
-                    {
+                    } else if (resource instanceof Statement) {
                         ((Statement) resource).close();
-                    }
-                    else if (resource instanceof ResultSet)
-                    {
+                    } else if (resource instanceof ResultSet) {
                         ((ResultSet) resource).close();
                     }
-                }
-                catch (SQLException e)
-                {
+                } catch (SQLException e) {
                     throw new RuntimeException(e);
                 }
             }
         }
     }
 
-    public static void close(Closeable... dbResources)
-    {
-        for (Closeable resource : dbResources)
-        {
-            if (resource != null)
-            {
-                try
-                {
+    public static void close(Closeable... dbResources) {
+        for (Closeable resource : dbResources) {
+            if (resource != null) {
+                try {
                     resource.close();
-                }
-                catch (IOException e)
-                {
+                } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
             }
         }
     }
 
-    public static <T> String join(Collection<T> collections, String separator)
-    {
+    public static <T> String join(Collection<T> collections, String separator) {
         String result = "";
-        if (!collections.isEmpty())
-        {
+        if (!collections.isEmpty()) {
             StringBuilder stringBuilder = new StringBuilder();
-            for (T object : collections)
-            {
+            for (T object : collections) {
                 stringBuilder.append(object.toString()).append(separator);
             }
             int resultLength = stringBuilder.length();
@@ -87,84 +66,66 @@ public class Utils
         return result;
     }
 
-    public static <T> String join(Collection<T> collection)
-    {
+    public static <T> String join(Collection<T> collection) {
         return join(collection, ", ");
     }
 
-    public static void writeStringToFile(File file, String text, boolean append)
-    {
+    public static void writeStringToFile(File file, String text, boolean append) {
         PrintWriter out = null;
         FileWriter outFile = null;
-        try
-        {
-            outFile = new FileWriter(file,append);
+        try {
+            outFile = new FileWriter(file, append);
             out = new PrintWriter(outFile);
             out.write(text);
             outFile.close();
             out.flush();
-        }
-        catch (IOException e)
-        {
+        } catch (IOException e) {
             throw new RuntimeException(e);
-        }
-        finally
-        {
+        } finally {
             close(out, outFile);
         }
     }
-    public static void writeStringToFile(File file, String text){
-    	writeStringToFile(file,text,false);
+
+    public static void writeStringToFile(File file, String text) {
+        writeStringToFile(file, text, false);
     }
-    public static void writeStringToFile(String file, String text)
-    {
+
+    public static void writeStringToFile(String file, String text) {
         writeStringToFile(new File(file), text);
     }
 
-    public static byte[] objectToByteArray(Object obj)
-    {
+    public static byte[] objectToByteArray(Object obj) {
         ByteArrayOutputStream bos = null;
         ObjectOutputStream oos = null;
         byte[] byteArray;
-        try
-        {
+        try {
             bos = new ByteArrayOutputStream();
             oos = new ObjectOutputStream(bos);
             oos.writeObject(obj);
             oos.flush();
             byteArray = bos.toByteArray();
-        }
-        catch (IOException e)
-        {
+        } catch (IOException e) {
             throw new RuntimeException(e);
-        }
-        finally
-        {
+        } finally {
             close(bos, oos);
         }
         return byteArray;
     }
 
-    public static String byteToString(byte[] byteArray)
-    {
+    public static String byteToString(byte[] byteArray) {
         String result;
-        try
-        {
+        try {
             result = new String(byteArray, "UTF-8");
-        }
-        catch (UnsupportedEncodingException e)
-        {
+        } catch (UnsupportedEncodingException e) {
             throw new RuntimeException();
         }
         return result;
     }
-    
-    public static String bytArrayToHexString(Object obj)
-    {
+
+    public static String bytArrayToHexString(Object obj) {
         StringBuilder stringBuilder = new StringBuilder();
         byte[] byteArray = Utils.objectToByteArray(obj);
-        for (byte b : byteArray)
-        {
+        for (byte b : byteArray) {
             stringBuilder.append(String.format("%02x", b & 0xff));
         }
         return stringBuilder.toString();

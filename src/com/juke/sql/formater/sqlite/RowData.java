@@ -7,36 +7,44 @@ package com.juke.sql.formater.sqlite;
  ******************************************************************************/
 public class RowData {
 
-	private String rowDataStirngValue;
-	private boolean changed;
-	private SQLiteColumn column;
+    private String rowDataStirngValue;
+    private boolean changed;
+    private SQLiteColumn column;
+    private int rowNum;
 
-	public SQLiteColumn getColumn() {
-		return column;
-	}
+    public int getRowNum() {
+        return rowNum;
+    }
 
-	public void setColumn(SQLiteColumn column) {
-		this.column = column;
-	}
+    public void setRowNum(int rowNum) {
+        this.rowNum = rowNum;
+    }
 
-	public RowData(String data, boolean isChanged) {
-		rowDataStirngValue = data;
-		changed = isChanged;
-	}
+    public SQLiteColumn getColumn() {
+        return column;
+    }
 
-	public String getRowDataStirngValue() {
-		return rowDataStirngValue;
-	}
+    public void setColumn(SQLiteColumn column) {
+        this.column = column;
+    }
 
-	public void setRowDataStirngValue(String rowDataStirngValue) {
-		this.rowDataStirngValue = rowDataStirngValue;
-	}
+    public RowData(String data) {
+        rowDataStirngValue = data;
+    }
 
-	public boolean isChanged() {
-		return changed;
-	}
+    public String getRowDataStirngValue() {
+        return rowDataStirngValue;
+    }
 
-	public void setChanged(boolean changed) {
-		this.changed = changed;
-	}
+    public void setRowDataStirngValue(String rowDataStirngValue) {
+        this.rowDataStirngValue = rowDataStirngValue;
+    }
+
+    public boolean isChanged() {
+        return changed;
+    }
+
+    public void setChanged(boolean changed) {
+        this.changed = changed;
+    }
 }

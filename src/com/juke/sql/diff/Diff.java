@@ -5,7 +5,6 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.juke.sql.formater.SQLFormater;
 import com.juke.sql.formater.sqlite.SQLiteFormater;
 import com.juke.sql.writer.SimpleWriteListner;
 
@@ -75,15 +74,15 @@ public class Diff {
 		return dropedTables;
 	}
 
-	private List<String> getTableListForCompare() {
-		if (tableListForCompare == null) {
-			tableListForCompare = new ArrayList<String>();
-			tableListForCompare.addAll(oldTables);
-			tableListForCompare.removeAll(dropedTables);
-			tableListForCompare.removeAll(missingTables);
-		}
-		return tableListForCompare;
-	}
+//    private List<String> getTableListForCompare() {
+//		if (tableListForCompare == null) {
+//			tableListForCompare = new ArrayList<String>();
+//			tableListForCompare.addAll(oldTables);
+//			tableListForCompare.removeAll(dropedTables);
+//			tableListForCompare.removeAll(missingTables);
+//		}
+//		return tableListForCompare;
+//	}
 
 	public void compare() {
 		for (String tableName : getNewTables()) {
