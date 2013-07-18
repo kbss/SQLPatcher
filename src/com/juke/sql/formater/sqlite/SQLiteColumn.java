@@ -62,6 +62,11 @@ public class SQLiteColumn implements SQLColumn, Comparable<SQLiteColumn> {
 	private boolean isUnique = false;
 
 	private int objectType = 0;
+	private String objectTypeName;
+
+	public String getObjectTypeName() {
+		return objectTypeName;
+	}
 
 	public SQLiteColumn(String columnName, String columnType) {
 		this.columnName = columnName;
@@ -72,6 +77,8 @@ public class SQLiteColumn implements SQLColumn, Comparable<SQLiteColumn> {
 		} else {
 			objectType = OBJECT_TYPE_UN_QOTED;
 		}
+
+		this.objectTypeName = columnType;
 	}
 
 	static {
@@ -98,6 +105,9 @@ public class SQLiteColumn implements SQLColumn, Comparable<SQLiteColumn> {
 
 	// TODO find another way to convert into two digit hex
 	private String byteToHex(byte[] bytes) {
+		if (bytes == null) {
+			return null;
+		}
 		StringBuilder stringBuilder = new StringBuilder();
 		for (byte b : bytes) {
 			String result = Integer.toHexString(b);
@@ -125,10 +135,25 @@ public class SQLiteColumn implements SQLColumn, Comparable<SQLiteColumn> {
 		} else if (objectType == OBJECT_TYPE_QOTED) {
 			result = SLQ_QUOTE + resultSet.getString(getColumnName())
 					+ SLQ_QUOTE;
+		} else if (resultSet.getString(getColumnName()) == null) {
+			result = "null";
+		} else if (resultSet.getString(getColumnName()).isEmpty()) {
+			result = "\"" + resultSet.getString(getColumnName()) + "\"";
+
 		} else {
 			result = resultSet.getString(getColumnName());
 		}
 		return result;
+	}
+
+	public Object getObjectValue(ResultSet resultSet) throws SQLException {
+//		if (objectType == OBJECT_TYPE_BINARY) {
+//			return resultSet.getBytes(getColumnName());
+//		} else if (objectType == OBJECT_TYPE_QOTED) {
+//			return resultSet.getString(getColumnName());
+//		} else {
+			return resultSet.getObject(getColumnName());
+//		}
 	}
 
 	@Override

@@ -1,447 +1,544 @@
 package com.juke.sql.formater.sqlite;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 
 import com.juke.sql.formater.SQLFormater;
 import com.juke.sql.util.Utils;
-import com.juke.sql.writer.WriteListner;
+import com.juke.sql.writer.SqlWriter;
 
 /*******************************************************************************
  * 
  * @author Serhii Krivtsov
  ******************************************************************************/
 public class SQLiteFormater implements SQLFormater {
-    private static final String SQL_SEPARATOR = ";";
+	private static final String AND_CLAUSE = " AND ";
 
-    private static final String SQL_COLUMN_SEPARATOR = ", ";
+	private static final String SELECT_ALL = "SELECT * FROM %s";
 
-    private static final String SELECT_ALL = "SELECT * FROM %s";
-    private WriteListner writeListner;
+	private static final String SQL_COLUMN_SEPARATOR = ",";
+	private static final String SQL_SEPARATOR = ";";
+	private SqlWriter writeListner;
+	private QuietCloser closer;
 
-    private String joinColumns(List<SQLiteColumn> columnList) {
+	public SQLiteFormater() {
+		closer = new QuietCloser();
+	}
 
-        StringBuilder stringBuilder = new StringBuilder();
-        for (SQLiteColumn column : columnList) {
-            stringBuilder.append(column.getColumnName()).append(
-                    SQL_COLUMN_SEPARATOR);
-        }
-        int length = stringBuilder.length();
-        stringBuilder.delete(length - SQL_COLUMN_SEPARATOR.length(), length);
-        return stringBuilder.toString();
-    }
+	private void addCreateTableStatement(String sqlQuery) {
+		writeSQLQuery(sqlQuery, SqlWriter.OTHER);
+	}
 
-    private void addInsertStatement(String sqlQuery) {
-        if (writeListner != null) {
-            writeListner.onWrite(sqlQuery, WriteListner.INSERT);
-        }
-    }
+	private void addDropTableStatement(String sqlQuery) {
+		writeSQLQuery(sqlQuery, SqlWriter.DROP);
+	}
 
-    private void addDropTableStatement(String sqlQuery) {
-        if (writeListner != null) {
-            writeListner.onWrite(sqlQuery, WriteListner.DROP);
-        }
-    }
+	private void addInsertStatement(String sqlQuery) {
+		writeSQLQuery(sqlQuery, SqlWriter.INSERT);
+	}
 
-    private void addCreateTableStatement(String sqlQuery) {
-        if (writeListner != null) {
-            writeListner.onWrite(sqlQuery, WriteListner.OTHER);
-        }
-    }
+	@Override
+	public void close() {
+		if (writeListner != null) {
+			writeListner.close();
+		}
+		closer.close();
+	}
 
-    @Override
-    public void createFullSQLTableDump(Connection connection, String tableName) {
-        getNewTableSQLQuery(connection, tableName);
-        List<SQLiteColumn> columnList = getColumnList(connection, tableName);
-        ResultSet resultSet = null;
-        Statement statement = null;
-        String joinedColumns = joinColumns(columnList);
+	@Override
+	public String createDropTableSQLQery(String tableName) {
+		addDropTableStatement(String.format(
+				SQLFormater.DROP_TABLE_SQL_TEMPLATE, tableName));
+		return String.format(SQLFormater.DROP_TABLE_SQL_TEMPLATE, tableName);
+	}
 
-        try {
-            statement = connection.createStatement();
-            resultSet = statement.executeQuery(String.format(SELECT_ALL,
-                    tableName));
-            while (resultSet.next()) {
-                String result = "";
-                for (SQLiteColumn column : columnList) {
-                    result += column.getObjectStringValue(resultSet)
-                            + SQL_COLUMN_SEPARATOR;
-                }
-                result = result.substring(0, result.length()
-                        - SQL_COLUMN_SEPARATOR.length());
-                addInsertStatement(String.format(SQLFormater.INSERT_QUERY,
-                        tableName, joinedColumns, result));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        } finally {
-            Utils.close(resultSet, statement);
-        }
-    }
+	@Override
+	public void createFullSQLTableDump(Connection connection, String tableName) {
+		getNewTableSQLQuery(connection, tableName);
+		List<SQLiteColumn> columnList = getColumnList(connection, tableName);
+		ResultSet resultSet = null;
+		Statement statement = null;
+		String joinedColumns = joinColumns(columnList);
 
-    // private boolean isTableStructureEquals(Connection newDatabase,
-    // Connection oldDatabase, String tableName) {
-    // List<SQLiteColumn> oldColumList = getColumnList(oldDatabase, tableName);
-    // List<SQLiteColumn> newColumList = getColumnList(oldDatabase, tableName);
-    // Collections.sort(oldColumList);
-    // Collections.sort(newColumList);
-    // return oldColumList.equals(newColumList);
-    // }
+		try {
+			statement = connection.createStatement();
+			resultSet = statement.executeQuery(String.format(SELECT_ALL,
+					tableName));
+			while (resultSet.next()) {
+				String result = "";
+				for (SQLiteColumn column : columnList) {
+					result += column.getObjectStringValue(resultSet)
+							+ SQL_COLUMN_SEPARATOR;
+				}
+				result = result.substring(0, result.length()
+						- SQL_COLUMN_SEPARATOR.length());
+				addInsertStatement(String.format(SQLFormater.INSERT_QUERY,
+						tableName, joinedColumns, result));
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		} finally {
+			closeQuietly(resultSet, statement);
+		}
+	}
 
-    private List<SQLiteColumn> getColumnList(Connection connection,
-            String tableName) {
-        List<SQLiteColumn> columnList = new ArrayList<SQLiteColumn>();
-        ResultSet resultSet = null;
-        Statement statement = null;
-        try {
-            statement = connection.createStatement();
-            resultSet = statement.executeQuery("pragma table_info('"
-                    + tableName + "')");
+	private void createSQLDiff(SQLRow control, SQLRow revised,
+			List<SQLiteColumn> columnList, List<SQLiteColumn> keyColumn,
+			String tableName, boolean revisedCheck) {
 
-            while (resultSet.next()) {
-                SQLiteColumn column = new SQLiteColumn(
-                        resultSet.getString("name"),
-                        resultSet.getString("type"));
-                if (resultSet.getInt("pk") == 1) {
-                    column.setPrimaryKey(true);
-                }
-                if (resultSet.getInt("notnull") == 1) {
-                    column.setNotNull(true);
-                }
-                columnList.add(column);
-            }
-            findAndUpdateUniqueColumns(connection, tableName, columnList);
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+		if (revisedCheck) {
+			if (revised.getDataList() == null
+					|| revised.getDataList().isEmpty()) {
+				String dataSQL = joinStrings(control.getDataList(),
+						SQL_COLUMN_SEPARATOR);
+				String joinedColumns = joinColumns(columnList);
+				addInsertStatement(String.format(SQLFormater.INSERT_QUERY,
+						tableName, joinedColumns, dataSQL));
+			} else {
+				String updateQuery = getUpdateQuery(tableName, control,
+						revised, keyColumn);
+				if (!updateQuery.isEmpty()) {
+					writeSQLQuery(updateQuery);
+				}
+			}
+		} else {
+			if (revised.getDataList() == null
+					|| revised.getDataList().isEmpty()) {
+				addInsertStatement(String.format(SQLFormater.DELETE_QUERY,
+						tableName,
+						formateDataByColum(keyColumn, control.getDataList())));
+			}
+		}
 
-        } finally {
-            Utils.close(resultSet, statement);
-        }
-        return columnList;
-    }
+	}
 
-    private String getIndexColumnName(Connection connection, String indexName) {
-        ResultSet resultSet = null;
-        Statement statement = null;
-        String columnName = null;
-        try {
-            statement = connection.createStatement();
-            resultSet = statement.executeQuery("pragma index_info('"
-                    + indexName + "')");
+	private void createSQlPatch(String tableName,
+			List<SQLiteColumn> columnList, Statement etalonStatement,
+			Statement revisedStatement, boolean isValidate,
+			Connection revisedConnection) throws SQLException {
 
-            while (resultSet.next()) {
-                columnName = resultSet.getString("name");
-                break;
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
+		String sqlPart = "SELECT * FROM \"" + tableName + "\" ";
+		String sql = sqlPart + getOrderByQuery(columnList);
+		ResultSet etalonResultSet = etalonStatement.executeQuery(sql);
+		List<SQLiteColumn> keyColumns = getKeyColumns(columnList);
+		if (keyColumns.isEmpty()) {
+			keyColumns = columnList;
+		}
 
-        } finally {
-            Utils.close(resultSet, statement);
-        }
-        return columnName;
-    }
+		String andClause = SQLiteFormater.AND_CLAUSE;
 
-    // TODO Try to find SQL query for selecting unique columns
-    private List<SQLiteColumn> findAndUpdateUniqueColumns(
-            Connection connection, String tableName,
-            List<SQLiteColumn> columnList) {
-        ResultSet resultSet = null;
-        Statement statement = null;
-        try {
-            statement = connection.createStatement();
-            try {
-                resultSet = statement.executeQuery("PRAGMA INDEX_LIST('"
-                        + tableName + "')");
-            } catch (SQLException e) {
-                return columnList;
-            }
-            while (resultSet.next()) {
-                String indexColumnId = getIndexColumnName(connection,
-                        resultSet.getString("name"));
-                if (indexColumnId != null && !indexColumnId.isEmpty()) {
-                    for (SQLiteColumn colum : columnList) {
-                        if (colum.getColumnName().equalsIgnoreCase(
-                                indexColumnId)) {
-                            colum.setUnique(true);
-                            break;
-                        }
-                    }
-                }
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        } finally {
-            Utils.close(resultSet, statement);
-        }
-        return columnList;
-    }
+		StringBuilder sbp = new StringBuilder(sqlPart);
+		sbp.append("WHERE ");
 
-    public String getNewTableSQLQuery(Connection connection, String tableName) {
-        String sql = "                                                  "
-                + "SELECT sql                                           "
-                + "FROM sqlite_master                                   "
-                + "WHERE type = 'table'  AND name = '" + tableName + "' ";
-        Statement statement = null;
-        ResultSet resultSet = null;
-        String result = "";
-        try {
-            statement = connection.createStatement();
-            resultSet = statement.executeQuery(sql);
-            while (resultSet.next()) {
-                result = resultSet.getString(1) + SQL_SEPARATOR;
-                addCreateTableStatement(result);
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        } finally {
-            Utils.close(resultSet, statement);
-        }
-        return result;
-    }
+		for (SQLiteColumn column : keyColumns) {
+			sbp.append(column.getColumnName()).append("=").append("?")
+					.append(andClause);
+		}
+		sbp.delete(sbp.length() - andClause.length(), sbp.length());
 
-    @Override
-    public List<String> getTableList(Connection connection) {
-        String sql = "                                          "
-                + "SELECT name                                  "
-                + "FROM sqlite_master                           "
-                + "WHERE type = 'table'                         ";
-        Statement statement = null;
-        ResultSet resultSet = null;
-        List<String> tableList = new ArrayList<String>();
-        try {
-            statement = connection.createStatement();
-            resultSet = statement.executeQuery(sql);
-            while (resultSet.next()) {
-                tableList.add(resultSet.getString(1));
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException(e);
-        } finally {
-            Utils.close(resultSet, statement);
-        }
-        return tableList;
-    }
+		PreparedStatement pstm = revisedConnection.prepareStatement(sbp
+				.toString());
+		while (etalonResultSet.next()) {
+			ResultSet rs = null;
+			try {
+				int i = 1;
+				for (SQLiteColumn column : keyColumns) {
+					pstm.setObject(i, column.getObjectValue(etalonResultSet));
+					i++;
+				}
+				SQLRow controlSqlRow = new SQLRow();
+				for (SQLiteColumn column : columnList) {
+					RowData data = new RowData(
+							column.getObjectStringValue(etalonResultSet));
+					data.setColumn(column);
+					controlSqlRow.setData(data);
 
-    @Override
-    public String createDropTableSQLQery(String tableName) {
-        addDropTableStatement(String.format(
-                SQLFormater.DROP_TABLE_SQL_TEMPLATE, tableName));
-        return String.format(SQLFormater.DROP_TABLE_SQL_TEMPLATE, tableName);
-    }
+				}
+				controlSqlRow.setColumnList(columnList);
+				rs = pstm.executeQuery();
+				SQLRow revisedSqlRow = new SQLRow();
+				if (rs.next()) {
+					for (SQLiteColumn column : columnList) {
+						RowData data = new RowData(
+								column.getObjectStringValue(rs));
+						revisedSqlRow.setData(data);
+					}
+				}
+				createSQLDiff(controlSqlRow, revisedSqlRow, columnList,
+						keyColumns, tableName, isValidate);
+			} finally {
+				closeQuietly(rs);
+			}
+		}
+		closeQuietly(etalonResultSet, pstm);
+	}
 
-    @Override
-    public void registreWriter(WriteListner listner) {
-        writeListner = listner;
-    }
+	// TODO Try to find SQL query for selecting unique columns
+	private List<SQLiteColumn> findAndUpdateUniqueColumns(
+			Connection connection, String tableName,
+			List<SQLiteColumn> columnList) {
+		ResultSet resultSet = null;
+		Statement statement = null;
+		try {
+			statement = connection.createStatement();
+			try {
+				resultSet = statement.executeQuery("PRAGMA INDEX_LIST('"
+						+ tableName + "')");
+			} catch (SQLException e) {
+				return columnList;
+			}
+			while (resultSet.next()) {
+				String indexColumnId = getIndexColumnName(connection,
+						resultSet.getString("name"));
+				if (indexColumnId != null && !indexColumnId.isEmpty()) {
+					for (SQLiteColumn colum : columnList) {
+						if (colum.getColumnName().equalsIgnoreCase(
+								indexColumnId)) {
+							colum.setUnique(true);
+							break;
+						}
+					}
+				}
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		} finally {
+			Utils.close(resultSet, statement);
+		}
+		return columnList;
+	}
 
-    public void generateTableDiff(Connection etalonConnection,
-            Connection revisedConnection, String tableName) throws SQLException {
-        List<SQLiteColumn> columnList = getColumnList(etalonConnection,
-                tableName);
-        Statement etalonStatement = etalonConnection.createStatement();
-        Statement revisedStatement = revisedConnection.createStatement();
+	private String formateDataByColum(List<SQLiteColumn> columnList,
+			List<RowData> dataList) {
+		StringBuilder stringBuilder = new StringBuilder();
+		String andClause = SQLiteFormater.AND_CLAUSE;
+		for (RowData data : dataList) {
+			for (SQLiteColumn column : columnList) {
+				if (column.getColumnName().equalsIgnoreCase(
+						data.getColumn().getColumnName())) {
+					stringBuilder.append(column.getColumnName()).append("=")
+							.append(data.getRowDataStringValue())
+							.append(andClause);
+					break;
+				}
+			}
+		}
+		String result = stringBuilder.toString();
+		result = result.substring(0, result.length() - andClause.length());
+		return result;
+	}
 
-        SQLTable etlonDiffTable = getTableDiff(tableName, columnList,
-                etalonStatement, revisedStatement);
+	public void generateTableDiff(Connection etalonConnection,
+			Connection revisedConnection, String tableName) throws SQLException {
+		List<SQLiteColumn> columnList = getColumnList(etalonConnection,
+				tableName);
+		Statement etalonStatement = etalonConnection.createStatement();
+		Statement revisedStatement = revisedConnection.createStatement();
 
-        SQLTable revisedDiffTable = getTableDiff(tableName, columnList,
-                revisedStatement, etalonStatement);
+		createSQlPatch(tableName, columnList, etalonStatement,
+				revisedStatement, true, revisedConnection);
 
-        createTableQueryDiff(etlonDiffTable, revisedDiffTable);
-    }
+		createSQlPatch(tableName, columnList, revisedStatement,
+				etalonStatement, false, etalonConnection);
+		closeQuietly(etalonStatement, revisedStatement);
+	}
 
-    private void createTableQueryDiff(SQLTable etlonDiffTable,
-            SQLTable revisedDiffTable) {
-        String joinedColumns = joinColumns(etlonDiffTable.getColumnList());
-        // ------------------------ INSERT DIFF-----------------------------
-        if (revisedDiffTable.getRowList() != null) {
-            for (SQLRow row : revisedDiffTable.getRowList()) {
-                if (row.isRowDeleted()) {
-                    String dataSQL = "";
-                    for (RowData data : row.getDataList()) {
-                        dataSQL += data.getRowDataStirngValue() + ",";
-                    }
-                    dataSQL = dataSQL.substring(0, dataSQL.length() - 1);
-                    addInsertStatement(String.format(SQLFormater.INSERT_QUERY,
-                            etlonDiffTable.getTableName(), joinedColumns,
-                            dataSQL));
-                } else {
+	private List<SQLiteColumn> getColumnList(Connection connection,
+			String tableName) {
+		List<SQLiteColumn> columnList = new ArrayList<SQLiteColumn>();
+		ResultSet resultSet = null;
+		Statement statement = null;
+		try {
+			statement = connection.createStatement();
+			resultSet = statement.executeQuery("pragma table_info('"
+					+ tableName + "')");
 
-                    System.out.println("Num:" + row.getRowNum());
+			while (resultSet.next()) {
+				SQLiteColumn column = new SQLiteColumn(
+						resultSet.getString("name"),
+						resultSet.getString("type"));
+				if (resultSet.getInt("pk") == 1) {
+					column.setPrimaryKey(true);
+				}
+				if (resultSet.getInt("notnull") == 1) {
+					column.setNotNull(true);
+				}
+				columnList.add(column);
+			}
+			findAndUpdateUniqueColumns(connection, tableName, columnList);
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
 
-                    for (RowData data : row.getDataList()) {
-                        if (data.isChanged()) {
+		} finally {
+			Utils.close(resultSet, statement);
+		}
+		return columnList;
+	}
 
-                            System.out
-                                    .print(data.getColumn().getColumnName()
-                                            + "="
-                                            + data.getRowDataStirngValue()
-                                            + ", ");
-                        }
-                    }
-                    System.out.println();
-                    SQLRow etlonRow = etlonDiffTable.getChangedRowByNum(row
-                            .getRowNum());
-                    System.out.println("Num:" + etlonRow.getRowNum());
+	private String getIndexColumnName(Connection connection, String indexName) {
+		ResultSet resultSet = null;
+		Statement statement = null;
+		String columnName = null;
+		try {
+			statement = connection.createStatement();
+			resultSet = statement.executeQuery("pragma index_info('"
+					+ indexName + "')");
 
-                    for (RowData data : etlonRow.getDataList()) {
-                        if (data.isChanged()) {
+			while (resultSet.next()) {
+				columnName = resultSet.getString("name");
+				break;
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
 
-                            System.out
-                                    .print(data.getColumn().getColumnName()
-                                            + "="
-                                            + data.getRowDataStirngValue()
-                                            + ", ");
-                        }
-                    }
-                    System.out.println();
-                }
-            }
-        }
-        // ------------------------ Delete DIFF-----------------------------
+		} finally {
+			Utils.close(resultSet, statement);
+		}
+		return columnName;
+	}
 
-        List<SQLiteColumn> keyColumn = getKeyColumns(etlonDiffTable
-                .getColumnList());
+	private List<SQLiteColumn> getKeyColumns(List<SQLiteColumn> columnList) {
+		List<SQLiteColumn> keyColumnList = new ArrayList<SQLiteColumn>();
+		for (SQLiteColumn column : columnList) {
+			if (column.isPrimaryKey() || column.isUnique()) {
+				keyColumnList.add(column);
+			}
+		}
+		return keyColumnList;
+	}
 
-        if (keyColumn.isEmpty()) {
-            keyColumn = etlonDiffTable.getColumnList();
-        }
+	public String getNewTableSQLQuery(Connection connection, String tableName) {
+		String sql = "                                                  "
+				+ "SELECT sql                                           "
+				+ "FROM sqlite_master                                   "
+				+ "WHERE type = 'table'  AND name = '" + tableName + "' ";
+		Statement statement = null;
+		ResultSet resultSet = null;
+		String result = "";
+		try {
+			statement = connection.createStatement();
+			resultSet = statement.executeQuery(sql);
+			while (resultSet.next()) {
+				result = resultSet.getString(1) + SQL_SEPARATOR;
+				addCreateTableStatement(result);
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		} finally {
+			Utils.close(resultSet, statement);
+		}
+		return result;
+	}
 
-        if (etlonDiffTable.getRowList() != null) {
-            for (SQLRow row : etlonDiffTable.getRowList()) {
-                if (row.isRowDeleted()) {
-                    addInsertStatement(String.format(SQLFormater.DELETE_QUERY,
-                            etlonDiffTable.getTableName(),
-                            formateDataByColum(keyColumn, row.getDataList())));
-                } else {
-                    // System.out.println("Num:" + row.getRowNum());
-                    //
-                    // for (RowData data : row.getDataList()) {
-                    // if (data.isChanged()) {
-                    // System.out
-                    // .print(data.getColumn().getColumnName()
-                    // + "="
-                    // + data.getRowDataStirngValue()
-                    // + ", ");
-                    // }
-                    // }
-                    // System.out.println();
-                }
-            }
+	private String getOrderByQuery(List<SQLiteColumn> list) {
+		String result = getOrderByQuery(list, true);
+		if (result.isEmpty()) {
+			result = getOrderByQuery(list, false);
+		}
+		return result;
+	}
 
-        }
-        // ------------------------ Delete DIFF-----------------------------
-    }
+	private String getOrderByQuery(List<SQLiteColumn> list, boolean orderByPk) {
+		StringBuilder builder = new StringBuilder();
+		String separator = SQL_COLUMN_SEPARATOR;
+		for (SQLiteColumn column : list) {
+			if (!(orderByPk ^ column.isPrimaryKey())) {
+				builder.append(column.getColumnName()).append(separator);
+			}
+		}
+		String result = "";
+		if (builder.length() > 1) {
+			builder.delete(builder.length() - separator.length(),
+					builder.length());
+			result = " ORDER BY " + builder.toString();
+		}
+		return result;
+	}
 
-    private String formateDataByColum(List<SQLiteColumn> columnList,
-            List<RowData> dataList) {
-        StringBuilder stringBuilder = new StringBuilder();
-        for (RowData data : dataList) {
-            for (SQLiteColumn column : columnList) {
-                if (column.getColumnName().equalsIgnoreCase(
-                        data.getColumn().getColumnName())) {
-                    stringBuilder.append(column.getColumnName()).append("=")
-                            .append(data.getRowDataStirngValue());
-                    break;
-                }
-            }
-        }
-        return stringBuilder.toString();
-    }
+	@Override
+	public List<String> getTableList(Connection connection) {
+		String sql = "                                          "
+				+ "SELECT name                                  "
+				+ "FROM sqlite_master                           "
+				+ "WHERE type = 'table'                         ";
+		Statement statement = null;
+		ResultSet resultSet = null;
+		List<String> tableList = new ArrayList<String>();
+		String ignorePattern = "sqlite_.*";
+		try {
+			statement = connection.createStatement();
+			resultSet = statement.executeQuery(sql);
+			while (resultSet.next()) {
+				String tableName = resultSet.getString(1);
+				if (!tableName.matches(ignorePattern)) {
+					tableList.add(tableName);
+				}
+			}
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		} finally {
+			Utils.close(resultSet, statement);
+		}
+		return tableList;
+	}
 
-    private List<SQLiteColumn> getKeyColumns(List<SQLiteColumn> columnList) {
-        List<SQLiteColumn> keyColumnList = new ArrayList<SQLiteColumn>();
-        for (SQLiteColumn column : columnList) {
-            if (column.isPrimaryKey() || column.isUnique()) {
-                keyColumnList.add(column);
-            }
-        }
-        return keyColumnList;
-    }
+	private String getUpdateCondition(SQLRow revisedRow,
+			List<SQLiteColumn> columnList) {
+		List<SQLiteColumn> keyColumns = getKeyColumns(columnList);
+		String andClause = SQLiteFormater.AND_CLAUSE;
+		if (keyColumns.isEmpty()) {
+			keyColumns = columnList;
+		}
+		StringBuilder condition = new StringBuilder();
+		for (SQLiteColumn column : keyColumns) {
+			condition.append(column.getColumnName()).append("=")
+					.append(revisedRow.getValueByColumn(column))
+					.append(andClause);
+		}
+		String result = condition.toString();
+		result = result.substring(0, result.length() - andClause.length());
+		return result;
+	}
 
-    private SQLTable getTableDiff(String tableName,
-            List<SQLiteColumn> columnList, Statement etalonStatement,
-            Statement revisedStatement) throws SQLException {
-        String sql = "SELECT * FROM \"" + tableName + "\"";
-        ResultSet etalonResultSet = etalonStatement.executeQuery(sql);
-        ResultSet revisedResultSet = revisedStatement.executeQuery(sql);
-        SQLTable table = new SQLTable();
-        table.setColumnList(columnList);
-        table.setTableName(tableName);
-        boolean isEOF = false;
-        int rowNum = 0;
-        if (revisedResultSet.next()) {
-            while (etalonResultSet.next()) {
-                SQLRow row = new SQLRow();
-                boolean isChanged = false;
-                int correctDataCount = 0;
-                for (SQLiteColumn column : columnList) {
-                    String etalonValue = column
-                            .getObjectStringValue(etalonResultSet);
-                    String revisedValue = null;
-                    column.getObjectStringValue(revisedResultSet);
-                    if (!isEOF) {
-                        revisedValue = column
-                                .getObjectStringValue(revisedResultSet);
-                    } else {
-                        isChanged = false;
-                        row.setRowDeleted(true);
-                    }
-                    RowData data = new RowData(etalonValue);
-                    if (!etalonValue.equalsIgnoreCase(revisedValue)) {
-                        isChanged = true;
-                        rowNum++;
-                    } else {
-                        correctDataCount++;
-                    }
-                    data.setChanged(isChanged);
-                    data.setColumn(column);
-                    row.setData(data);
-                    row.setRowNum(rowNum);
-                    if (correctDataCount == 0) {
-                        row.setRowDeleted(true);
-                    }
-                }
-                if (!isChanged) {
-                    if (!revisedResultSet.next()) {
-                        isEOF = true;
-                    }
-                } else if (correctDataCount > 0) {
-                    table.addRow(row);
-                    if (!revisedResultSet.next()) {
-                        isEOF = true;
-                    }
-                } else {
-                    table.addRow(row);
-                }
-            }
-        }
-        return table;
-    }
+	private String getUpdateQuery(String tableName, SQLRow revisedRow,
+			SQLRow etalonRow, List<SQLiteColumn> columnList) {
 
-    // private void printSQL(SQLTable table) {
-    // table.getRowList();
-    // printlnColumnList(table.getColumnList());
-    // for (SQLRow row : table.getRowList()) {
-    // List<RowData> dataList = row.getDataList();
-    // for (RowData data : dataList) {
-    // System.out.print(data.getRowDataStirngValue() + " - "
-    // + (data.isChanged()) + "\t");
-    // }
-    // System.out.println();
-    // }
-    //
-    // }
+		StringBuilder changed = new StringBuilder();
+		String separator = SQLiteFormater.SQL_COLUMN_SEPARATOR;
+		int i = 0;
+		for (RowData data : revisedRow.getDataList()) {
+			RowData controlData = etalonRow.getDataList().get(i);
+			String revisedValue = data.getRowDataStringValue();
 
-    // private void printlnColumnList(List<SQLiteColumn> list) {
-    // for (SQLiteColumn column : list) {
-    // System.out.print(column.getColumnName() + "\t");
-    // }
-    // System.out.println("========================================");
-    // }
+			if (revisedValue != null) {
+				if (!data.getRowDataStringValue().equals(
+						controlData.getRowDataStringValue())) {
+					changed.append(data.getColumn().getColumnName())
+							.append("=").append(revisedValue).append(separator);
+
+				}
+			}
+			i++;
+		}
+		if (changed.length() == 0) {
+			return "";
+		}
+		changed.delete(changed.length() - separator.length(), changed.length());
+		return String.format(SQLiteFormater.UPDATE_QUERY, tableName,
+				changed.toString(), getUpdateCondition(revisedRow, columnList));
+	}
+
+	private String joinColumns(List<SQLiteColumn> columnList) {
+
+		StringBuilder stringBuilder = new StringBuilder();
+		for (SQLiteColumn column : columnList) {
+			stringBuilder.append(column.getColumnName()).append(
+					SQL_COLUMN_SEPARATOR);
+		}
+		int length = stringBuilder.length();
+		stringBuilder.delete(length - SQL_COLUMN_SEPARATOR.length(), length);
+		return stringBuilder.toString();
+	}
+
+	private <E> String joinStrings(Collection<E> collection, String separator) {
+
+		StringBuilder stringBuilder = new StringBuilder();
+		for (E object : collection) {
+			stringBuilder.append(object).append(separator);
+		}
+		int length = stringBuilder.length();
+		stringBuilder.delete(length - separator.length(), length);
+		return stringBuilder.toString();
+	}
+
+	@Override
+	public void registreWriter(SqlWriter listner) {
+		writeListner = listner;
+	}
+
+	public void writeSQLQuery(String sqlQuery) {
+		writeSQLQuery(sqlQuery, SqlWriter.OTHER);
+	}
+
+	private void writeSQLQuery(String sqlQuery, int type) {
+		if (writeListner != null) {
+			writeListner.onWrite(sqlQuery, type);
+		}
+	}
+
+	private void closeQuietly(Object... dbResources) {
+		closer.close(dbResources);
+	}
+}
+
+/**
+ * Separate thread that are uses for DB resource closing.
+ * 
+ * @author SKrivtsov
+ * */
+class QuietCloser extends Thread {
+
+	private List<Object> resourcesList;
+	private boolean stop = false;
+
+	public QuietCloser() {
+		resourcesList = Collections.synchronizedList(new ArrayList<Object>());
+		this.start();
+	}
+
+	public void close(Object... dbResources) {
+		resourcesList.add(dbResources);
+	}
+
+	public void close() {
+		stop = true;
+	}
+
+	@Override
+	public void run() {
+		while (!stop) {
+			if (!resourcesList.isEmpty()) {
+				synchronized (resourcesList) {
+					for (Iterator<Object> it = resourcesList.iterator(); it
+							.hasNext();) {
+						Object resources = it.next();
+						it.remove();
+						closeDbResources(resources);
+					}
+				}
+			}
+			try {
+				sleep(200);
+			} catch (InterruptedException e) {
+				throw new RuntimeException(e);
+			}
+		}
+	}
+
+	public void closeDbResources(Object... dbResources) {
+		for (Object resource : dbResources) {
+			if (resource != null) {
+				try {
+					if (resource instanceof Connection) {
+						((Connection) resource).close();
+					} else if (resource instanceof Statement) {
+						((Statement) resource).close();
+					} else if (resource instanceof ResultSet) {
+						((ResultSet) resource).close();
+					}
+				} catch (SQLException e) {
+					throw new RuntimeException(e);
+				}
+			}
+		}
+	}
 }

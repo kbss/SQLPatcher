@@ -3,7 +3,7 @@ package com.juke.sql.formater;
 import java.sql.Connection;
 import java.util.List;
 
-import com.juke.sql.writer.WriteListner;
+import com.juke.sql.writer.SqlWriter;
 
 /*******************************************************************************
  * TODO: add class / interface description
@@ -11,15 +11,17 @@ import com.juke.sql.writer.WriteListner;
  * @author Serhii Krivtsov
  ******************************************************************************/
 public interface SQLFormater {
-    public String DROP_TABLE_SQL_TEMPLATE = "DROP TABLE IF EXISTS %s;";
+    public String DROP_TABLE_SQL_TEMPLATE = "DROP TABLE IF EXISTS %s";
     public String INSERT_QUERY = "INSERT INTO %s (%s) VALUES (%s)";
-    public String DELETE_QUERY = "DELETE FROM %s WHERE %s;";
-
+    public String DELETE_QUERY = "DELETE FROM %s WHERE %s";
+    public String UPDATE_QUERY = "UPDATE %s SET %s WHERE %s";
+    
     public void createFullSQLTableDump(Connection connection, String tableName);
 
     public List<String> getTableList(Connection connection);
 
     public String createDropTableSQLQery(String tableName);
 
-    public void registreWriter(WriteListner listner);
+    public void registreWriter(SqlWriter listner);
+    public void close();
 }

@@ -74,35 +74,34 @@ public class Diff {
 		return dropedTables;
 	}
 
-//    private List<String> getTableListForCompare() {
-//		if (tableListForCompare == null) {
-//			tableListForCompare = new ArrayList<String>();
-//			tableListForCompare.addAll(oldTables);
-//			tableListForCompare.removeAll(dropedTables);
-//			tableListForCompare.removeAll(missingTables);
-//		}
-//		return tableListForCompare;
-//	}
+	private List<String> getTableListForCompare() {
+		if (tableListForCompare == null) {
+			tableListForCompare = new ArrayList<String>();
+			tableListForCompare.addAll(oldTables);
+			tableListForCompare.removeAll(dropedTables);
+			tableListForCompare.removeAll(missingTables);
+		}
+		return tableListForCompare;
+	}
 
-	public void compare() {
+	public void compare() throws SQLException {
+		System.out.println("Processing...");
 		for (String tableName : getNewTables()) {
 			sqlFormater.createFullSQLTableDump(expected, tableName);
 		}
 		for (String tableName : getDropedTables()) {
-			System.out.println(sqlFormater.createDropTableSQLQery(tableName));
+			sqlFormater.createDropTableSQLQery(tableName);
 		}
 
 		List<String> tableList = getOldTableList();
-
-		try {
-
-			for (String tableName : tableList) {
-				sqlFormater.generateTableDiff(actual, expected, tableName);
-			}
-		} catch (SQLException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
+		long start = System.currentTimeMillis();
+		for (String tableName : tableList) {
+			sqlFormater.generateTableDiff(actual, expected, tableName);
 		}
+		System.out
+				.println((System.currentTimeMillis() - start) / 1000f + " s.");
+		sqlFormater.writeSQLQuery("COMMIT");
+		sqlFormater.close();
 	}
 
 }

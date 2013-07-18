@@ -32,7 +32,7 @@ public class RowData {
         rowDataStirngValue = data;
     }
 
-    public String getRowDataStirngValue() {
+    public String getRowDataStringValue() {
         return rowDataStirngValue;
     }
 
@@ -46,5 +46,9 @@ public class RowData {
 
     public void setChanged(boolean changed) {
         this.changed = changed;
+    }
+    
+    public String toString(){
+    	return rowDataStirngValue;
     }
 }
