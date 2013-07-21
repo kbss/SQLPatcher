@@ -8,11 +8,14 @@ import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.PrintWriter;
 import java.io.UnsupportedEncodingException;
+import java.net.URISyntaxException;
 import java.sql.Connection;
+import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.Collection;
+import java.util.Properties;
 
 /*******************************************************************************
  * TODO: add class / interface description
@@ -129,5 +132,18 @@ public class Utils {
 		}
 		return stringBuilder.toString();
 	}
-}
 
+	public static Connection getConnection(String dbFile) throws SQLException,
+			URISyntaxException {
+		try {
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
+			throw new RuntimeException(e);
+		}
+		Properties connectionProps = new Properties();
+		connectionProps.setProperty("flags", "READONLY");
+		Connection connection = DriverManager.getConnection("jdbc:sqlite:"
+				+ new File(dbFile).toURI().getPath(), connectionProps);
+		return connection;
+	}
+}

@@ -15,7 +15,7 @@ public class SimpleWriteListner implements SqlWriter {
 
 	private static final String FILE_TEMPLATE = "%s_%s.sql";
 
-	private int seq = 0;
+	private int seq = 1;
 
 	private String folder = "sql\\";
 

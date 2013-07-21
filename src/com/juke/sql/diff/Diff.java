@@ -1,11 +1,15 @@
 package com.juke.sql.diff;
 
+import java.net.URISyntaxException;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 
 import com.juke.sql.formater.sqlite.SQLiteFormater;
+import com.juke.sql.util.Utils;
 import com.juke.sql.writer.SimpleWriteListner;
 
 /*******************************************************************************
@@ -95,13 +99,52 @@ public class Diff {
 
 		List<String> tableList = getOldTableList();
 		long start = System.currentTimeMillis();
+		Connection controlAttached = attachConnections(actual, expected);
+
+		Connection revisedAttached = attachConnections(expected, actual);
+
 		for (String tableName : tableList) {
-			sqlFormater.generateTableDiff(actual, expected, tableName);
+			sqlFormater.generateTableDiff(controlAttached, revisedAttached,
+					tableName);
 		}
+		Utils.close(controlAttached, revisedAttached);
 		System.out
 				.println((System.currentTimeMillis() - start) / 1000f + " s.");
 		sqlFormater.writeSQLQuery("COMMIT");
 		sqlFormater.close();
 	}
 
+	public Connection attachConnections(Connection main, Connection second) {
+		Connection connection = null;
+		Statement st = null;
+		try {
+			connection = Utils.getConnection(getDBPath(main));
+			st = connection.createStatement();
+			st.execute("attach \"" + getDBPath(second) + "\" as sec;");
+		} catch (SQLException e) {
+			throw new RuntimeException(e);
+		} catch (URISyntaxException e) {
+			throw new RuntimeException(e);
+		} finally {
+			Utils.close(st);
+		}
+		return connection;
+	}
+
+	private String getDBPath(Connection connection) throws SQLException {
+		Statement st = null;
+		ResultSet rs = null;
+		try {
+			st = connection.createStatement();
+			rs = st.executeQuery("PRAGMA database_list;");
+			while (rs.next()) {
+				if ("main".equals(rs.getString("name"))) {
+					return rs.getString("file");
+				}
+			}
+		} finally {
+			Utils.close(rs, st);
+		}
+		return null;
+	}
 }
